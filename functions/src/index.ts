@@ -3,12 +3,12 @@ import { Storage } from '@google-cloud/storage';
     const gcs = new Storage();
 import * as FirebaseAdmin from 'firebase-admin';
     const db = FirebaseAdmin.firestore(FirebaseAdmin.initializeApp());
-import * as UUIDv4 from 'uuid/v4';
+import { v4 as UUIDv4 } from 'uuid';
 import { tmpdir } from 'os';
 import { join, dirname } from 'path';
 
-import * as sharp from 'sharp';
-import * as fs from 'fs-extra'; 
+const sharp = require('sharp');
+const fs = require('fs-extra')
 
 
 
@@ -24,10 +24,8 @@ export const createThumbnail = functions.storage
 .onFinalize(async object => {
     console.log('createThumbnail called!');
 
-    if(!object.name) return false;
     const filePath = object.name;
     const fileName = filePath.split('/').pop();
-    if(!fileName) return false;
     
     const bucket = gcs.bucket(object.bucket);
     const bucketDir = dirname(filePath);
@@ -38,7 +36,6 @@ export const createThumbnail = functions.storage
 
     const thumbnailKey = '-small';
 
-    if(!object.contentType) return false;
     if (fileName.includes(thumbnailKey) || !object.contentType.includes('image')) {
         console.log('Exiting cloud function: createThumbnail');
         return false;
@@ -54,7 +51,7 @@ export const createThumbnail = functions.storage
 
 // 3. Resize image saved in tmpFilePath
     const sizes = [200];
-
+    
     const uploadPromises = sizes.map(async size => {
     // Create new filepath for resized images
         const thumbnailName = `${fileName}${thumbnailKey}`;
