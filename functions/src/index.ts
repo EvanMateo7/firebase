@@ -78,11 +78,6 @@ export const createThumbnail = functions.storage
         });
 
         return saveURLToItemDoc(fileName, bucket.name, newthumbnailPath, uuid, "thumbnailURL");
-
-        // return uploadTask.map( next => {
-        //     db.doc(`items/${fileName}`).update({thumbnailURL: next.getSignedUrl});
-        //     return next;
-        // });
     });
 
     await Promise.all([...uploadPromises, originalURLSavePromise]);
