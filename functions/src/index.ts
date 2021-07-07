@@ -24,6 +24,7 @@ export const createThumbnail = functions.storage
 .onFinalize(async object => {
     console.log('createThumbnail called!');
 
+    const originalAccessToken = object.metadata?.firebaseStorageDownloadTokens;
     const filePath = object.name;
     const fileName = filePath.split('/').pop();
     
@@ -36,10 +37,14 @@ export const createThumbnail = functions.storage
 
     const thumbnailKey = '-small';
 
+// Infinite loop guard 
     if (fileName.includes(thumbnailKey) || !object.contentType.includes('image')) {
         console.log('Exiting cloud function: createThumbnail');
         return false;
     }
+
+// 0. Save original image URL to item doc
+  const originalURLSavePromise = saveURLToItemDoc(fileName, bucket.name, filePath, originalAccessToken, "originalURL");
 
 // 1. Check if exists
     await fs.ensureDir(tmpDir);
@@ -72,19 +77,22 @@ export const createThumbnail = functions.storage
             }
         });
 
-        const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(newthumbnailPath)}?alt=media&token=${uuid}`;
-
-        return db.doc(`items/${fileName}`).update({thumbnailURL: url});
+        return saveURLToItemDoc(fileName, bucket.name, newthumbnailPath, uuid, "thumbnailURL");
 
         // return uploadTask.map( next => {
         //     db.doc(`items/${fileName}`).update({thumbnailURL: next.getSignedUrl});
         //     return next;
         // });
-    })
-    await Promise.all(uploadPromises);
+    });
 
-    
+    await Promise.all([...uploadPromises, originalURLSavePromise]);
 
 // 4. Cleanup
     return fs.remove(tmpDir);
 });
+
+
+function saveURLToItemDoc(itemId: string, bucketName: string, bucketPath: string, token: string, urlName: string) {
+  const url = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(bucketPath)}?alt=media&token=${token}`;
+  return db.doc(`items/${itemId}`).update({[urlName]: url});
+}
