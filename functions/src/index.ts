@@ -91,3 +91,83 @@ function saveURLToItemDoc(itemId: string, bucketName: string, bucketPath: string
   const url = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(bucketPath)}?alt=media&token=${token}`;
   return db.doc(`items/${itemId}`).update({[urlName]: url});
 }
+
+
+import algoliasearch from 'algoliasearch';
+
+const algoliaClient = algoliasearch(functions.config().algolia.appid, functions.config().algolia.apikey);
+const algoliaIndex = algoliaClient.initIndex('angularapp_dev');
+const firestoreCollection = 'items';
+const firestoreDoc = `${firestoreCollection}/{uid}`;
+const algoliaUpdateTopicID = 'algolia_update';
+
+export const saveCollectionToAlgolia = functions.pubsub.topic(algoliaUpdateTopicID).onPublish(async (message, context) => {
+
+  console.log("EventID: ", context.eventId);
+
+	const algoliaRecords: any[] = [];
+	const querySnapshot = await db.collection(firestoreCollection).get();
+
+	querySnapshot.docs.forEach(snapshot => {
+		const algoliaObject = algoliaObjectFromFirestoreSnapshot(snapshot);
+    if (algoliaObject) {
+      algoliaRecords.push(algoliaObject);
+    }
+  });
+	
+	algoliaIndex.saveObjects(algoliaRecords)
+    .then(() => {
+      console.log("Successfully indexed firestore collection 'items' to Algolia.");
+    })
+    .catch((err) => {
+      console.error("Failed to index firestore collection 'items' to Algolia.");
+    });
+})
+
+export const saveToAlgoliaOnCreate = functions.firestore.document(firestoreDoc).onCreate(async (snapshot, context) => {
+  await saveDocumentInAlgolia(snapshot);
+});
+
+export const saveToAlgoliaOnUpdate = functions.firestore.document(firestoreDoc).onUpdate(async (change, context) => {
+  await saveDocumentInAlgolia(change.after);
+});
+
+export const saveToAlgoliaOnDelete = functions.firestore.document(firestoreDoc).onDelete(async (snapshot, context) => {
+  await deleteDocumentFromAlgolia(snapshot);
+});
+
+async function saveDocumentInAlgolia(snapshot: functions.firestore.QueryDocumentSnapshot) {
+  const algoliaObject = algoliaObjectFromFirestoreSnapshot(snapshot);
+  if (algoliaObject) {
+    await algoliaIndex.saveObject(algoliaObject);
+  }
+}
+
+async function deleteDocumentFromAlgolia(snapshot: FirebaseFirestore.DocumentSnapshot) {
+  if (snapshot.exists) {
+      await algoliaIndex.deleteObject(snapshot.id);
+  }
+}
+
+function algoliaObjectFromFirestoreSnapshot(snapshot: FirebaseFirestore.DocumentSnapshot) {
+  if (snapshot.exists) {
+    const data = snapshot.data();
+    if (data) {
+      const record = {
+        objectID: snapshot.id,
+        id: snapshot.id,
+        name: data.name,
+        description: data.description,
+        userID: data.userID,
+        thumbnailURL: data.thumbnailURL,
+        likes: data.likes,
+        dislikes: data.dislikes,
+        dateCreated: data.dateCreated.toMillis()
+      };
+
+      return record;
+    }
+  }
+
+  return null;
+}
